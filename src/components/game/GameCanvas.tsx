@@ -255,7 +255,7 @@ class UmbralEngine {
       0.1,
       200,
     );
-    this.camera.position.set(0, 18, 8);
+    this.camera.position.set(0, 13, 7);
     this.camera.lookAt(0, 0, 0);
 
     const ambient = new THREE.AmbientLight(0x2a2a3a, 0.85);
@@ -471,7 +471,21 @@ class UmbralEngine {
   }
 
   private spawnTorch(tileX: number, tileY: number, facingAngle: number) {
+    // facingAngle: 0 = facing +Z (south), π = facing -Z (north), -π/2 = +X (east), π/2 = -X (west)
+    // Compute the direction from the wall (tileX,tileY) toward the floor it should illuminate
+    const dirX = Math.sin(facingAngle);
+    const dirZ = Math.cos(facingAngle);
+
+    // Position the torch slightly inside the wall tile, but the flame extends toward the floor
+    const baseX = tileX * TILE + dirX * 0.3;
+    const baseZ = tileY * TILE + dirZ * 0.3;
+    // Flame position: further toward the floor
+    const flameOffset = 0.6;
+    const flameX = tileX * TILE + dirX * flameOffset;
+    const flameZ = tileY * TILE + dirZ * flameOffset;
+
     const group = new THREE.Group();
+    group.position.set(baseX, 0, baseZ);
 
     // Wooden pole
     const poleMat = new THREE.MeshStandardMaterial({
@@ -480,53 +494,62 @@ class UmbralEngine {
       metalness: 0.1,
     });
     const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.08, 1.4, 6),
+      new THREE.CylinderGeometry(0.07, 0.09, 1.6, 6),
       poleMat,
     );
-    pole.position.y = 0.7;
+    pole.position.y = 0.8;
     pole.castShadow = true;
     group.add(pole);
 
-    // Bracket (small box at top of pole)
+    // Bracket (small box at top of pole, extends toward floor)
     const bracket = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.1, 0.15),
+      new THREE.BoxGeometry(0.18, 0.12, 0.18),
       poleMat,
     );
-    bracket.position.set(0.12, 1.35, 0);
+    bracket.position.set(dirX * 0.15, 1.55, dirZ * 0.15);
+    bracket.rotation.y = facingAngle;
     group.add(bracket);
 
-    // Flame (emissive sphere)
+    // Flame (emissive sphere) - placed at flameX/flameZ position
+    // depthTest false so flames are always visible (like billboards)
     const flameMat = new THREE.MeshBasicMaterial({
-      color: 0xffaa44,
+      color: 0xffcc66,
       transparent: true,
-      opacity: 0.95,
+      opacity: 1,
+      depthTest: false,
+      depthWrite: false,
     });
     const flame = new THREE.Mesh(
-      new THREE.SphereGeometry(0.15, 8, 6),
+      new THREE.SphereGeometry(0.4, 10, 8),
       flameMat,
     );
-    flame.position.set(0.12, 1.5, 0);
-    flame.scale.y = 1.4;
+    flame.position.set(flameX - baseX, 1.85, flameZ - baseZ);
+    flame.scale.y = 1.8;
+    flame.renderOrder = 999;
     group.add(flame);
 
-    // Position torch on the wall tile, offset toward the floor
-    group.position.set(tileX * TILE, 0, tileY * TILE);
-    // Move it slightly toward the floor center so it sits on the inner face of the wall
-    const offsetX = Math.sin(facingAngle) * 0.7;
-    const offsetZ = Math.cos(facingAngle) * 0.7;
-    group.position.x += offsetX;
-    group.position.z += offsetZ;
-    // Rotate so the flame faces the floor
-    group.rotation.y = facingAngle;
+    // Inner brighter flame core
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0xffffcc,
+      transparent: true,
+      opacity: 1,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 8, 6),
+      coreMat,
+    );
+    core.position.set(flameX - baseX, 1.85, flameZ - baseZ);
+    core.scale.y = 1.5;
+    core.renderOrder = 1000;
+    group.add(core);
+
     this.scene.add(group);
 
-    // Warm point light
-    const light = new THREE.PointLight(0xffaa55, 1.8, 9, 1.6);
-    light.position.set(
-      tileX * TILE + offsetX,
-      1.6,
-      tileY * TILE + offsetZ,
-    );
+    // Warm point light at flame position
+    const light = new THREE.PointLight(0xffaa55, 2.2, 11, 1.5);
+    light.position.set(flameX, 1.9, flameZ);
     this.scene.add(light);
 
     this.torches.push({
@@ -1436,7 +1459,7 @@ class UmbralEngine {
 
   private updateCamera(dt: number) {
     const target = this.player.position.clone();
-    const desired = new THREE.Vector3(target.x, 17, target.z + 8);
+    const desired = new THREE.Vector3(target.x, 13, target.z + 7);
     this.camera.position.lerp(desired, 0.08);
     this.camera.lookAt(target.x, 0.5, target.z);
   }
