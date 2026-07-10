@@ -183,6 +183,7 @@ class UmbralEngine {
   private extractionMesh!: THREE.Mesh;
   private extractionLight!: THREE.PointLight;
   private torch!: THREE.PointLight;
+  private torches: { light: THREE.PointLight; flame: THREE.Mesh; baseSeed: number }[] = [];
   private turnIndicator!: THREE.Mesh; // ring around player
   private hoverIndicator!: THREE.Mesh;
 
@@ -257,13 +258,13 @@ class UmbralEngine {
     this.camera.position.set(0, 18, 8);
     this.camera.lookAt(0, 0, 0);
 
-    const ambient = new THREE.AmbientLight(0x1a1f3a, 0.5);
+    const ambient = new THREE.AmbientLight(0x2a2a3a, 0.85);
     this.scene.add(ambient);
 
-    const hemi = new THREE.HemisphereLight(0x2a3050, 0x100805, 0.35);
+    const hemi = new THREE.HemisphereLight(0x3a3050, 0x20140a, 0.55);
     this.scene.add(hemi);
 
-    const dir = new THREE.DirectionalLight(0x4a5278, 0.4);
+    const dir = new THREE.DirectionalLight(0x5a5278, 0.5);
     dir.position.set(20, 30, 10);
     dir.castShadow = true;
     dir.shadow.mapSize.set(1024, 1024);
@@ -399,6 +400,140 @@ class UmbralEngine {
     this.playerTileY = this.dungeon.spawn.y;
     this.playerTargetX = this.playerTileX * TILE;
     this.playerTargetZ = this.playerTileY * TILE;
+
+    // Place wall torches throughout the dungeon for visibility
+    this.placeTorches();
+  }
+
+  private placeTorches() {
+    // Strategy: for each room, place 1-2 torches on adjacent wall tiles.
+    // Also scatter some along long corridors.
+    const placed = new Set<string>();
+    const tryPlace = (floorX: number, floorY: number) => {
+      // Find a wall tile adjacent to this floor tile
+      const candidates: { x: number; y: number; dir: number }[] = [];
+      const dirs = [
+        { dx: 1, dy: 0, ang: -Math.PI / 2 },
+        { dx: -1, dy: 0, ang: Math.PI / 2 },
+        { dx: 0, dy: 1, ang: 0 },
+        { dx: 0, dy: -1, ang: Math.PI },
+      ];
+      for (const d of dirs) {
+        const wx = floorX + d.dx;
+        const wy = floorY + d.dy;
+        if (wx < 0 || wy < 0 || wx >= this.dungeon.width || wy >= this.dungeon.height) continue;
+        if (this.dungeon.cells[wy][wx] === 'wall') {
+          candidates.push({ x: wx, y: wy, ang: d.ang });
+        }
+      }
+      if (candidates.length === 0) return false;
+      const pick = candidates[Math.floor(Math.random() * candidates.length)];
+      const key = `${pick.x},${pick.y}`;
+      if (placed.has(key)) return false;
+      placed.add(key);
+      this.spawnTorch(pick.x, pick.y, pick.ang);
+      return true;
+    };
+
+    // Torches in rooms (corners and center-adjacent)
+    for (const room of this.dungeon.rooms) {
+      // 2 torches per room: top-left and bottom-right corners (inset)
+      tryPlace(room.x + 1, room.y + 1);
+      tryPlace(room.x + room.w - 2, room.y + room.h - 2);
+      // Big rooms get extra
+      if (room.w >= 7 || room.h >= 7) {
+        tryPlace(room.x + 1, room.y + room.h - 2);
+        tryPlace(room.x + room.w - 2, room.y + 1);
+      }
+    }
+
+    // Torches along corridors: scan all floor tiles, place every ~6 tiles
+    // on tiles that have a wall neighbor (so torch can attach)
+    let corridorCount = 0;
+    for (let y = 0; y < this.dungeon.height; y++) {
+      for (let x = 0; x < this.dungeon.width; x++) {
+        if (this.dungeon.cells[y][x] !== 'floor') continue;
+        // Skip tiles inside rooms
+        let inRoom = false;
+        for (const room of this.dungeon.rooms) {
+          if (x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h) {
+            inRoom = true;
+            break;
+          }
+        }
+        if (inRoom) continue;
+        corridorCount++;
+        if (corridorCount % 6 === 0) {
+          tryPlace(x, y);
+        }
+      }
+    }
+  }
+
+  private spawnTorch(tileX: number, tileY: number, facingAngle: number) {
+    const group = new THREE.Group();
+
+    // Wooden pole
+    const poleMat = new THREE.MeshStandardMaterial({
+      color: 0x3a2a1a,
+      roughness: 0.9,
+      metalness: 0.1,
+    });
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.08, 1.4, 6),
+      poleMat,
+    );
+    pole.position.y = 0.7;
+    pole.castShadow = true;
+    group.add(pole);
+
+    // Bracket (small box at top of pole)
+    const bracket = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.1, 0.15),
+      poleMat,
+    );
+    bracket.position.set(0.12, 1.35, 0);
+    group.add(bracket);
+
+    // Flame (emissive sphere)
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa44,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const flame = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15, 8, 6),
+      flameMat,
+    );
+    flame.position.set(0.12, 1.5, 0);
+    flame.scale.y = 1.4;
+    group.add(flame);
+
+    // Position torch on the wall tile, offset toward the floor
+    group.position.set(tileX * TILE, 0, tileY * TILE);
+    // Move it slightly toward the floor center so it sits on the inner face of the wall
+    const offsetX = Math.sin(facingAngle) * 0.7;
+    const offsetZ = Math.cos(facingAngle) * 0.7;
+    group.position.x += offsetX;
+    group.position.z += offsetZ;
+    // Rotate so the flame faces the floor
+    group.rotation.y = facingAngle;
+    this.scene.add(group);
+
+    // Warm point light
+    const light = new THREE.PointLight(0xffaa55, 1.8, 9, 1.6);
+    light.position.set(
+      tileX * TILE + offsetX,
+      1.6,
+      tileY * TILE + offsetZ,
+    );
+    this.scene.add(light);
+
+    this.torches.push({
+      light,
+      flame,
+      baseSeed: Math.random() * Math.PI * 2,
+    });
   }
 
   private initPlayer() {
@@ -819,6 +954,7 @@ class UmbralEngine {
     this.updateLootBob(dt);
     this.updateCamera(dt);
     this.updateTorch();
+    this.updateTorches();
     this.updateHoverIndicator();
 
     // Hit flashes
@@ -1307,6 +1443,25 @@ class UmbralEngine {
 
   private updateTorch() {
     this.torch.intensity = 2.2 + Math.sin(performance.now() * 0.012) * 0.3 + Math.sin(performance.now() * 0.05) * 0.15;
+  }
+
+  private updateTorches() {
+    const t = performance.now() * 0.001;
+    for (const torch of this.torches) {
+      // Flicker: combination of slow + fast sine waves, unique per torch via baseSeed
+      const flicker =
+        Math.sin(t * 7 + torch.baseSeed) * 0.18 +
+        Math.sin(t * 23 + torch.baseSeed * 2) * 0.08 +
+        Math.sin(t * 51 + torch.baseSeed * 3) * 0.04;
+      torch.light.intensity = 1.6 + flicker + 0.3;
+      // Flame visual scale flicker
+      const s = 1 + flicker * 0.6;
+      torch.flame.scale.set(s, s * 1.4, s);
+      // Color shift slightly toward red when dimmer
+      const mat = torch.flame.material as THREE.MeshBasicMaterial;
+      const dim = 0.85 + flicker * 0.5;
+      mat.color.setRGB(1, 0.6 * dim + 0.2, 0.25 * dim);
+    }
   }
 
   private updateHoverIndicator() {
