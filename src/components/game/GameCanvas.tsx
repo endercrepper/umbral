@@ -58,9 +58,11 @@ const TILE = 2; // world units per dungeon tile
 const PLAYER_MAX_HP_BASE = 100;
 // Stoneshard-style: 1 action per turn
 const EXTRACTION_TURNS_REQUIRED = 3;
-const MOVE_TWEEN_DURATION = 0.18;
-const ATTACK_ANIM_DURATION = 0.28;
-const ENEMY_ACTION_DELAY = 0.22;
+const MOVE_TWEEN_DURATION = 0.14;
+const ATTACK_ANIM_DURATION = 0.24;
+const ENEMY_ACTION_DELAY = 0.10; // delay between enemy actions
+const ENEMY_IDLE_DELAY = 0.02;   // delay when enemy has no valid action (just skip)
+const ENEMY_RELEVANT_RANGE = 14; // tiles — skip enemies beyond this from player
 
 type Turn = 'player' | 'enemy';
 
@@ -892,9 +894,8 @@ class UmbralEngine {
       return;
     }
 
-    // Reset just-pressed flags
-    this.keysJustPressed = {};
-    this.mouseClicked = false;
+    // Just-pressed flags are cleared inside processPlayerInput once an action
+    // is actually consumed (so blocked moves don't lose the key press).
   }
 
   private processPlayerInput() {
@@ -908,12 +909,15 @@ class UmbralEngine {
 
     if (dx !== 0 || dy !== 0) {
       this.tryMove(dx, dy);
+      // Always consume the buffered key press once it's been attempted
+      this.keysJustPressed = {};
       return;
     }
 
     // Attack
     if (this.mouseClicked) {
       this.tryAttack();
+      this.mouseClicked = false;
       return;
     }
   }
@@ -975,7 +979,10 @@ class UmbralEngine {
     this.weaponDurability = Math.max(0, this.weaponDurability - 1);
 
     // Compute hits immediately (animation is cosmetic)
-    const range = this.weaponDef.range + 0.5;
+    // Weapon range is expressed in TILES — convert to world units for distance check.
+    // Add a small buffer so that diagonal-adjacent enemies (√2 ≈ 1.414 tiles) are still
+    // hittable by weapons with range 1.4 (like the starter knife).
+    const rangeWorld = (this.weaponDef.range + 0.1) * TILE;
     const isRanged = this.weaponDef.class === 'ranged';
     let mightBonus = 1;
     if (!isRanged && this.playerMightBonus > 0) {
@@ -995,7 +1002,7 @@ class UmbralEngine {
       const edx = enemy.mesh.position.x - this.player.position.x;
       const edz = enemy.mesh.position.z - this.player.position.z;
       const dist = Math.sqrt(edx * edx + edz * edz);
-      if (dist > range) continue;
+      if (dist > rangeWorld) continue;
       if (isRanged) {
         const ang = Math.atan2(edx, edz);
         let dang = ang - this.playerFacing;
@@ -1010,19 +1017,15 @@ class UmbralEngine {
         if (Math.abs(dang) > 1.2) continue;
       }
       this.damageEnemy(enemy, damage, isCrit);
-      if (!isRanged) {
-        const kb = 0.4;
-        enemy.mesh.position.x += (edx / dist) * kb;
-        enemy.mesh.position.z += (edz / dist) * kb;
-      }
+      // No knockback in turn-based mode — keeps enemies in range for follow-up attacks
       hitCount += 1;
       if (isRanged) break;
     }
 
     const fx = Math.sin(this.playerFacing);
     const fz = Math.cos(this.playerFacing);
-    const px = this.player.position.x + fx * range * 0.5;
-    const pz = this.player.position.z + fz * range * 0.5;
+    const px = this.player.position.x + fx * rangeWorld * 0.5;
+    const pz = this.player.position.z + fz * rangeWorld * 0.5;
     this.spawnParticles([px, 1, pz], this.weaponDef.color, isRanged ? 16 : 10);
 
     const critText = isCrit ? ' CRITICO!' : '';
@@ -1141,22 +1144,30 @@ class UmbralEngine {
       if (this.disposed) return;
       if (this.currentTurn !== 'player') return;
       if (this.isAnimating) {
-        setTimeout(tryEnd, 100);
+        setTimeout(tryEnd, 60);
         return;
       }
       this.startEnemyTurn();
     };
-    setTimeout(tryEnd, 320);
+    setTimeout(tryEnd, 220);
   }
 
   private startEnemyTurn() {
     this.currentTurn = 'enemy';
-    this.enemyQueue = this.enemies.filter((e) => e.alive);
+    // Only consider enemies that are alive AND within relevant range of the player.
+    // Far-away enemies idle and don't consume turn time — this keeps the enemy turn fast.
+    this.enemyQueue = this.enemies.filter((e) => {
+      if (!e.alive) return false;
+      const dx = e.tileX - this.playerTileX;
+      const dy = e.tileY - this.playerTileY;
+      const distTiles = Math.sqrt(dx * dx + dy * dy);
+      return distTiles <= ENEMY_RELEVANT_RANGE;
+    });
     for (const e of this.enemyQueue) {
       const def = ENEMIES[e.kind as keyof typeof ENEMIES];
       e.actionsLeft = def.actionsPerTurn;
     }
-    this.enemyActionTimer = 0.15;
+    this.enemyActionTimer = 0.06;
     this.enemyActionInProgress = false;
     (this.turnIndicator.material as THREE.MeshBasicMaterial).color.setHex(0xff3344);
     (this.turnIndicator.material as THREE.MeshBasicMaterial).opacity = 0.7;
@@ -1180,20 +1191,21 @@ class UmbralEngine {
     const enemy = this.enemyQueue[0];
     if (!enemy.alive) {
       this.enemyQueue.shift();
-      this.enemyActionTimer = 0.05;
+      this.enemyActionTimer = ENEMY_IDLE_DELAY;
       return;
     }
     if (enemy.actionsLeft <= 0) {
       this.enemyQueue.shift();
-      this.enemyActionTimer = 0.05;
+      this.enemyActionTimer = ENEMY_IDLE_DELAY;
       return;
     }
-    this.doEnemyAction(enemy);
+    const didAct = this.doEnemyAction(enemy);
     enemy.actionsLeft -= 1;
-    this.enemyActionTimer = ENEMY_ACTION_DELAY;
+    // Only wait the full delay if the enemy actually did something visible
+    this.enemyActionTimer = didAct ? ENEMY_ACTION_DELAY : ENEMY_IDLE_DELAY;
   }
 
-  private doEnemyAction(enemy: Enemy) {
+  private doEnemyAction(enemy: Enemy): boolean {
     const def = ENEMIES[enemy.kind as keyof typeof ENEMIES];
     const dx = this.playerTileX - enemy.tileX;
     const dy = this.playerTileY - enemy.tileY;
@@ -1204,20 +1216,21 @@ class UmbralEngine {
       enemy.mesh.rotation.y = Math.atan2(dx, dy);
     }
 
-    // Attack if in range
-    if (distTiles <= def.attackRange / TILE + 0.5) {
+    // Attack if in range — attackRange is in world units, convert to tiles
+    // (e.g. attackRange 1.4 → 0.7 tiles, so adjacent tile = attack range)
+    const attackRangeTiles = def.attackRange / TILE + 0.6;
+    if (distTiles <= attackRangeTiles) {
       this.damagePlayer(def.damage);
-      // Attack visual
       this.spawnParticles(
         [this.player.position.x, 1, this.player.position.z],
         '#ff3333',
         10,
       );
-      this.logAction(`${def.name} ti attacca (${def.damage} danno)`, '#ff5555');
-      return;
+      this.logAction(`${def.name} ti colpisce (${def.damage} danno)`, '#ff5555');
+      return true;
     }
 
-    // Move toward player (1 tile)
+    // Move toward player (1 tile) if within detection range
     if (distTiles <= def.detectRange) {
       let mx = 0, my = 0;
       if (Math.abs(dx) > Math.abs(dy)) {
@@ -1229,25 +1242,28 @@ class UmbralEngine {
       }
       const nx = enemy.tileX + mx;
       const ny = enemy.tileY + my;
-      if (nx < 0 || ny < 0 || nx >= this.dungeon.width || ny >= this.dungeon.height) return;
-      if (this.dungeon.cells[ny][nx] === 'wall') return;
-      if (this.occupiedTiles.has(`${nx},${ny}`)) return;
-      if (nx === this.playerTileX && ny === this.playerTileY) return;
+      if (nx < 0 || ny < 0 || nx >= this.dungeon.width || ny >= this.dungeon.height) return false;
+      if (this.dungeon.cells[ny][nx] === 'wall') return false;
+      if (this.occupiedTiles.has(`${nx},${ny}`)) return false;
+      if (nx === this.playerTileX && ny === this.playerTileY) return false;
       // Move
       this.occupiedTiles.delete(`${enemy.tileX},${enemy.tileY}`);
       enemy.tileX = nx;
       enemy.tileY = ny;
       this.occupiedTiles.add(`${nx},${ny}`);
-      // Tween
       this.tweenEnemyMove(enemy, nx, ny);
+      return true;
     }
+
+    // Enemy is too far to detect player — idle (no visible action)
+    return false;
   }
 
   private tweenEnemyMove(enemy: Enemy, nx: number, ny: number) {
     const from = { x: enemy.mesh.position.x, z: enemy.mesh.position.z };
     const to = { x: nx * TILE, z: ny * TILE };
     const start = performance.now();
-    const dur = 180;
+    const dur = 110;
     const animate = () => {
       if (this.disposed || !enemy.alive) return;
       const t = Math.min(1, (performance.now() - start) / dur);
@@ -1303,13 +1319,13 @@ class UmbralEngine {
     const dx = tx - this.playerTileX;
     const dy = ty - this.playerTileY;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    // Show only adjacent tiles for movement, or attack range tiles
-    const range = this.weaponDef.range / TILE + 0.5;
-    if (dist <= Math.max(1, range)) {
+    // Weapon range is in tiles; show indicator when within attack range OR adjacent
+    const weaponRange = this.weaponDef.range;
+    if (dist <= Math.max(1, weaponRange)) {
       this.hoverIndicator.visible = true;
       this.hoverIndicator.position.set(tx * TILE, 0.06, ty * TILE);
       const mat = this.hoverIndicator.material as THREE.MeshBasicMaterial;
-      // Green if walkable adjacent, red if enemy, orange if attackable
+      // Green if walkable adjacent, red if enemy, orange if attackable (but not adjacent)
       if (this.occupiedTiles.has(`${tx},${ty}`)) {
         mat.color.setHex(0xff3344);
       } else if (dist === 1 && this.dungeon.cells[ty] && this.dungeon.cells[ty][tx] !== 'wall') {
