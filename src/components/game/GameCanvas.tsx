@@ -184,6 +184,7 @@ class UmbralEngine {
   private extractionLight!: THREE.PointLight;
   private torch!: THREE.PointLight;
   private torches: { light: THREE.PointLight; flame: THREE.Mesh; baseSeed: number }[] = [];
+  private playerSpot!: THREE.SpotLight;
   private turnIndicator!: THREE.Mesh; // ring around player
   private hoverIndicator!: THREE.Mesh;
 
@@ -240,14 +241,14 @@ class UmbralEngine {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.9;
+    this.renderer.toneMappingExposure = 1.35;
     this.mount.appendChild(this.renderer.domElement);
   }
 
   private initScene() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x05060a);
-    this.scene.fog = new THREE.FogExp2(0x05060a, 0.04);
+    this.scene.background = new THREE.Color(0x0a0a14);
+    this.scene.fog = new THREE.FogExp2(0x101020, 0.014);
 
     this.camera = new THREE.PerspectiveCamera(
       50,
@@ -258,13 +259,13 @@ class UmbralEngine {
     this.camera.position.set(0, 13, 7);
     this.camera.lookAt(0, 0, 0);
 
-    const ambient = new THREE.AmbientLight(0x2a2a3a, 0.85);
+    const ambient = new THREE.AmbientLight(0x7a7a8a, 2.8);
     this.scene.add(ambient);
 
-    const hemi = new THREE.HemisphereLight(0x3a3050, 0x20140a, 0.55);
+    const hemi = new THREE.HemisphereLight(0x8a8098, 0x60402a, 1.7);
     this.scene.add(hemi);
 
-    const dir = new THREE.DirectionalLight(0x5a5278, 0.5);
+    const dir = new THREE.DirectionalLight(0x9a92b0, 1.2);
     dir.position.set(20, 30, 10);
     dir.castShadow = true;
     dir.shadow.mapSize.set(1024, 1024);
@@ -277,13 +278,13 @@ class UmbralEngine {
     this.scene.add(dir);
 
     this.matFloor = new THREE.MeshStandardMaterial({
-      color: 0x1a1620,
-      roughness: 0.95,
+      color: 0x4a4458,
+      roughness: 0.88,
       metalness: 0.05,
     });
     this.matWall = new THREE.MeshStandardMaterial({
-      color: 0x2a2230,
-      roughness: 0.85,
+      color: 0x5a5268,
+      roughness: 0.75,
       metalness: 0.1,
     });
     this.matPlayer = new THREE.MeshStandardMaterial({
@@ -386,7 +387,7 @@ class UmbralEngine {
     this.extractionMesh.position.set(ext.x * TILE, 0.05, ext.y * TILE);
     this.scene.add(this.extractionMesh);
 
-    this.extractionLight = new THREE.PointLight(0x00ff88, 4, 14);
+    this.extractionLight = new THREE.PointLight(0x00ff88, 7, 18);
     this.extractionLight.position.set(ext.x * TILE, 1.8, ext.y * TILE);
     this.scene.add(this.extractionLight);
 
@@ -545,11 +546,27 @@ class UmbralEngine {
     core.renderOrder = 1000;
     group.add(core);
 
+    // Halo: large soft glow around flame (billboard-style)
+    const haloMat = new THREE.SpriteMaterial({
+      map: this.makeGlowTexture(),
+      color: 0xffaa55,
+      transparent: true,
+      opacity: 0.7,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const halo = new THREE.Sprite(haloMat);
+    halo.position.set(flameX - baseX, 1.85, flameZ - baseZ);
+    halo.scale.set(2.5, 2.5, 1);
+    halo.renderOrder = 998;
+    group.add(halo);
+
     this.scene.add(group);
 
     // Warm point light at flame position
-    const light = new THREE.PointLight(0xffaa55, 2.2, 11, 1.5);
-    light.position.set(flameX, 1.9, flameZ);
+    const light = new THREE.PointLight(0xffaa55, 8, 22, 1.3);
+    light.position.set(flameX, 2.0, flameZ);
     this.scene.add(light);
 
     this.torches.push({
@@ -606,11 +623,23 @@ class UmbralEngine {
     this.playerWeapon.castShadow = true;
     this.player.add(this.playerWeapon);
 
-    this.torch = new THREE.PointLight(0xff8844, 2.5, 14, 1.8);
-    this.torch.position.set(0, 2, 0);
+    this.torch = new THREE.PointLight(0xff8844, 4.5, 18, 1.6);
+    this.torch.position.set(0, 2.2, 0);
     this.torch.castShadow = true;
     this.torch.shadow.mapSize.set(512, 512);
     this.player.add(this.torch);
+
+    // Player spotlight — focused cone of warm light pointing down-forward
+    // Creates realistic pool of light around the player
+    this.playerSpot = new THREE.SpotLight(0xffd9a0, 6, 22, Math.PI / 4, 0.45, 1.2);
+    this.playerSpot.position.set(0, 4, 0);
+    this.playerSpot.target.position.set(0, 0, 1.5);
+    this.playerSpot.castShadow = true;
+    this.playerSpot.shadow.mapSize.set(512, 512);
+    this.playerSpot.shadow.camera.near = 0.5;
+    this.playerSpot.shadow.camera.far = 25;
+    this.player.add(this.playerSpot);
+    this.player.add(this.playerSpot.target);
 
     this.player.position.set(this.playerTargetX, 0, this.playerTargetZ);
     this.scene.add(this.player);
@@ -746,6 +775,23 @@ class UmbralEngine {
       tileY,
       actionsLeft: def.actionsPerTurn,
     });
+  }
+
+  private makeGlowTexture(): THREE.Texture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    grad.addColorStop(0.2, 'rgba(255, 220, 160, 0.8)');
+    grad.addColorStop(0.5, 'rgba(255, 150, 80, 0.3)');
+    grad.addColorStop(1, 'rgba(255, 100, 50, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    return tex;
   }
 
   private makeHpBarSprite(): THREE.Sprite {
@@ -1454,7 +1500,7 @@ class UmbralEngine {
     // Extraction pulse
     const s = 1 + Math.sin(performance.now() * 0.005) * 0.08;
     this.extractionMesh.scale.set(s, 1, s);
-    this.extractionLight.intensity = 3.5 + Math.sin(performance.now() * 0.008) * 0.8;
+    this.extractionLight.intensity = 6 + Math.sin(performance.now() * 0.008) * 1.2;
   }
 
   private updateCamera(dt: number) {
@@ -1465,7 +1511,9 @@ class UmbralEngine {
   }
 
   private updateTorch() {
-    this.torch.intensity = 2.2 + Math.sin(performance.now() * 0.012) * 0.3 + Math.sin(performance.now() * 0.05) * 0.15;
+    this.torch.intensity = 4.0 + Math.sin(performance.now() * 0.012) * 0.4 + Math.sin(performance.now() * 0.05) * 0.2;
+    // Spotlight flicker too
+    this.playerSpot.intensity = 5.5 + Math.sin(performance.now() * 0.011) * 0.5 + Math.sin(performance.now() * 0.043) * 0.25;
   }
 
   private updateTorches() {
@@ -1473,17 +1521,26 @@ class UmbralEngine {
     for (const torch of this.torches) {
       // Flicker: combination of slow + fast sine waves, unique per torch via baseSeed
       const flicker =
-        Math.sin(t * 7 + torch.baseSeed) * 0.18 +
-        Math.sin(t * 23 + torch.baseSeed * 2) * 0.08 +
-        Math.sin(t * 51 + torch.baseSeed * 3) * 0.04;
-      torch.light.intensity = 1.6 + flicker + 0.3;
+        Math.sin(t * 7 + torch.baseSeed) * 0.5 +
+        Math.sin(t * 23 + torch.baseSeed * 2) * 0.25 +
+        Math.sin(t * 51 + torch.baseSeed * 3) * 0.12;
+      torch.light.intensity = 7.5 + flicker;
       // Flame visual scale flicker
-      const s = 1 + flicker * 0.6;
-      torch.flame.scale.set(s, s * 1.4, s);
+      const s = 1 + flicker * 0.12;
+      torch.flame.scale.set(s, 1.8 * s, s);
       // Color shift slightly toward red when dimmer
       const mat = torch.flame.material as THREE.MeshBasicMaterial;
-      const dim = 0.85 + flicker * 0.5;
-      mat.color.setRGB(1, 0.6 * dim + 0.2, 0.25 * dim);
+      const dim = 0.85 + flicker * 0.08;
+      mat.color.setRGB(1, 0.75 * dim + 0.15, 0.3 * dim);
+      // Halo opacity flicker too
+      const haloSprite = torch.flame.parent?.children.find(
+        (c) => c instanceof THREE.Sprite,
+      ) as THREE.Sprite | undefined;
+      if (haloSprite) {
+        (haloSprite.material as THREE.SpriteMaterial).opacity = 0.6 + flicker * 0.15;
+        const hs = 2.3 + flicker * 0.15;
+        haloSprite.scale.set(hs, hs, 1);
+      }
     }
   }
 

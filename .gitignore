@@ -61,4 +61,4 @@ db/*.db-journal
 .zscripts/*.pid
 
 # OS files
-Thumbs.db
+Thumbs.dbupload/
