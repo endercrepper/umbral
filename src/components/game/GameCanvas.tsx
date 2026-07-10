@@ -56,10 +56,7 @@ interface ActionLogEntry {
 
 const TILE = 2; // world units per dungeon tile
 const PLAYER_MAX_HP_BASE = 100;
-const PLAYER_MAX_AP_BASE = 4;
-const MOVE_AP_COST = 1;
-const ITEM_AP_COST = 1;
-const WAIT_AP_COST = 1;
+// Stoneshard-style: 1 action per turn
 const EXTRACTION_TURNS_REQUIRED = 3;
 const MOVE_TWEEN_DURATION = 0.18;
 const ATTACK_ANIM_DURATION = 0.28;
@@ -137,8 +134,7 @@ class UmbralEngine {
   private playerWeapon!: THREE.Mesh;
   private playerHp = PLAYER_MAX_HP_BASE;
   private playerMaxHp = PLAYER_MAX_HP_BASE;
-  private playerAp = PLAYER_MAX_AP_BASE;
-  private playerMaxAp = PLAYER_MAX_AP_BASE;
+  private playerHasAction = true; // single action per turn — Stoneshard style
   private playerTileX = 0;
   private playerTileY = 0;
   private playerTargetX = 0;
@@ -317,8 +313,7 @@ class UmbralEngine {
     const derived = getDerivedStats(gs.baseStats, gs.level);
     this.playerMaxHp = derived.maxHp;
     this.playerHp = derived.maxHp;
-    this.playerMaxAp = derived.maxAp;
-    this.playerAp = derived.maxAp;
+    this.playerHasAction = true;
     this.playerCritChance = derived.critChance;
     this.playerMightBonus = derived.mightBonus;
     this.playerFocusBonus = derived.focusBonus;
@@ -773,7 +768,7 @@ class UmbralEngine {
   consumeItem(uid: string) {
     if (this.currentTurn !== 'player') return;
     if (this.isAnimating) return;
-    if (this.playerAp < ITEM_AP_COST) return;
+    if (!this.playerHasAction) return;
     const idx = this.carriedConsumables.findIndex((c) => c.uid === uid);
     if (idx < 0) return;
     const c = this.carriedConsumables[idx];
@@ -784,7 +779,7 @@ class UmbralEngine {
     this.spawnParticles(this.player.position.toArray() as Vec3, '#33ff55', 16);
     c.qty -= 1;
     if (c.qty <= 0) this.carriedConsumables.splice(idx, 1);
-    this.playerAp -= ITEM_AP_COST;
+    this.playerHasAction = false;
     this.logAction(`Usato ${def.name} (+${def.healAmount} HP)`, '#33ff55');
     this.afterPlayerAction();
   }
@@ -792,6 +787,8 @@ class UmbralEngine {
   endTurn() {
     if (this.currentTurn !== 'player') return;
     if (this.isAnimating) return;
+    this.playerHasAction = false;
+    this.logAction(`Turno passato`, '#888888');
     this.startEnemyTurn();
   }
 
@@ -901,8 +898,7 @@ class UmbralEngine {
   }
 
   private processPlayerInput() {
-    // Movement (1 AP each)
-    if (this.playerAp < MOVE_AP_COST) return;
+    if (!this.playerHasAction) return;
 
     let dx = 0, dy = 0;
     if (this.keysJustPressed['KeyW'] || this.keysJustPressed['ArrowUp']) dy = -1;
@@ -918,14 +914,6 @@ class UmbralEngine {
     // Attack
     if (this.mouseClicked) {
       this.tryAttack();
-      return;
-    }
-
-    // Wait
-    if (this.keysJustPressed['Space']) {
-      this.playerAp -= WAIT_AP_COST;
-      this.logAction(`Attesa (−${WAIT_AP_COST} AP)`, '#888888');
-      this.afterPlayerAction();
       return;
     }
   }
@@ -946,7 +934,7 @@ class UmbralEngine {
       this.player.rotation.y = this.playerFacing;
       return;
     }
-    // Valid move
+    // Valid move — single action consumed
     this.playerTileX = tx;
     this.playerTileY = ty;
     this.playerFacing = Math.atan2(dx, dy);
@@ -957,7 +945,7 @@ class UmbralEngine {
     this.animDuration = MOVE_TWEEN_DURATION;
     this.animMode = 'move';
     this.isAnimating = true;
-    this.playerAp -= MOVE_AP_COST;
+    this.playerHasAction = false;
     // Check loot pickup at new tile
     this.checkLootPickup(tx, ty);
     // Check extraction
@@ -966,11 +954,6 @@ class UmbralEngine {
   }
 
   private tryAttack() {
-    const cost = this.weaponDef.apCost;
-    if (this.playerAp < cost) {
-      this.logAction(`AP insufficienti per ${this.weaponDef.name} (${cost} AP)`, '#ff4444');
-      return;
-    }
     if (this.weaponDurability <= 0) {
       this.logAction('Arma rotta!', '#ff4444');
       return;
@@ -988,7 +971,7 @@ class UmbralEngine {
     this.animDuration = ATTACK_ANIM_DURATION;
     this.animMode = 'attack';
     this.isAnimating = true;
-    this.playerAp -= cost;
+    this.playerHasAction = false;
     this.weaponDurability = Math.max(0, this.weaponDurability - 1);
 
     // Compute hits immediately (animation is cosmetic)
@@ -1014,14 +997,12 @@ class UmbralEngine {
       const dist = Math.sqrt(edx * edx + edz * edz);
       if (dist > range) continue;
       if (isRanged) {
-        // For ranged: hit nearest in arc
         const ang = Math.atan2(edx, edz);
         let dang = ang - this.playerFacing;
         while (dang > Math.PI) dang -= Math.PI * 2;
         while (dang < -Math.PI) dang += Math.PI * 2;
         if (Math.abs(dang) > 0.4) continue;
       } else {
-        // Melee cone
         const ang = Math.atan2(edx, edz);
         let dang = ang - this.playerFacing;
         while (dang > Math.PI) dang -= Math.PI * 2;
@@ -1029,17 +1010,15 @@ class UmbralEngine {
         if (Math.abs(dang) > 1.2) continue;
       }
       this.damageEnemy(enemy, damage, isCrit);
-      // Knockback (only melee)
       if (!isRanged) {
         const kb = 0.4;
         enemy.mesh.position.x += (edx / dist) * kb;
         enemy.mesh.position.z += (edz / dist) * kb;
       }
       hitCount += 1;
-      if (isRanged) break; // single target for ranged
+      if (isRanged) break;
     }
 
-    // Particles in front
     const fx = Math.sin(this.playerFacing);
     const fz = Math.cos(this.playerFacing);
     const px = this.player.position.x + fx * range * 0.5;
@@ -1157,25 +1136,22 @@ class UmbralEngine {
   }
 
   private afterPlayerAction() {
-    if (this.playerAp <= 0) {
-      // Auto end turn after animation finishes
-      const tryEnd = () => {
-        if (this.disposed) return;
-        if (this.currentTurn !== 'player') return;
-        if (this.isAnimating) {
-          setTimeout(tryEnd, 100);
-          return;
-        }
-        this.startEnemyTurn();
-      };
-      setTimeout(tryEnd, 350);
-    }
+    // Stoneshard-style: every player action immediately ends the turn
+    const tryEnd = () => {
+      if (this.disposed) return;
+      if (this.currentTurn !== 'player') return;
+      if (this.isAnimating) {
+        setTimeout(tryEnd, 100);
+        return;
+      }
+      this.startEnemyTurn();
+    };
+    setTimeout(tryEnd, 320);
   }
 
   private startEnemyTurn() {
     this.currentTurn = 'enemy';
     this.enemyQueue = this.enemies.filter((e) => e.alive);
-    // Reset actions for each enemy
     for (const e of this.enemyQueue) {
       const def = ENEMIES[e.kind as keyof typeof ENEMIES];
       e.actionsLeft = def.actionsPerTurn;
@@ -1191,10 +1167,10 @@ class UmbralEngine {
     this.enemyActionTimer -= dt;
     if (this.enemyActionTimer > 0) return;
     if (this.enemyQueue.length === 0) {
-      // End enemy turn
+      // End enemy turn — back to player, restore their single action
       this.currentTurn = 'player';
       this.turnCount += 1;
-      this.playerAp = this.playerMaxAp;
+      this.playerHasAction = true;
       (this.turnIndicator.material as THREE.MeshBasicMaterial).color.setHex(0x33ff55);
       (this.turnIndicator.material as THREE.MeshBasicMaterial).opacity = 0.6;
       this.logAction(`— Turno ${this.turnCount} (giocatore) —`, '#33ff88');
@@ -1212,7 +1188,6 @@ class UmbralEngine {
       this.enemyActionTimer = 0.05;
       return;
     }
-    // Do one action
     this.doEnemyAction(enemy);
     enemy.actionsLeft -= 1;
     this.enemyActionTimer = ENEMY_ACTION_DELAY;
@@ -1468,8 +1443,7 @@ class UmbralEngine {
     this.onStats({
       hp: Math.max(0, Math.floor(this.playerHp)),
       maxHp: this.playerMaxHp,
-      ap: this.playerAp,
-      maxAp: this.playerMaxAp,
+      hasAction: this.playerHasAction,
       currentTurn: this.currentTurn,
       turnCount: this.turnCount,
       weaponName: this.weaponDef.name,

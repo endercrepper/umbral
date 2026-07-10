@@ -5,8 +5,7 @@ import { Heart, Zap, Sword, Package, Crosshair, Skull, Clock, Sparkles, ScrollTe
 export interface HudStats {
   hp: number;
   maxHp: number;
-  ap: number;
-  maxAp: number;
+  hasAction: boolean;
   currentTurn: 'player' | 'enemy';
   turnCount: number;
   weaponName: string;
@@ -32,6 +31,7 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
   const hpPct = (stats.hp / stats.maxHp) * 100;
   const durPct = stats.weaponMaxDurability > 0 ? (stats.weaponDurability / stats.weaponMaxDurability) * 100 : 0;
   const isPlayerTurn = stats.currentTurn === 'player';
+  const canAct = isPlayerTurn && stats.hasAction && !stats.isAnimating;
   const timeStr = formatTime(stats.raidTime);
 
   return (
@@ -51,14 +51,14 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
             }`}
           />
           <span className="text-xs tracking-widest font-bold uppercase">
-            {isPlayerTurn ? 'Tuo Turno' : 'Turno Nemici'}
+            {isPlayerTurn ? (stats.hasAction ? 'Tua Azione' : 'Attendi') : 'Turno Nemici'}
           </span>
           <span className="text-[10px] opacity-60">· T{stats.turnCount}</span>
           <span className="text-[10px] opacity-60">· {timeStr}</span>
         </div>
       </div>
 
-      {/* Top-left: HP/AP */}
+      {/* Top-left: HP + Action indicator */}
       <div className="absolute top-4 left-4 w-72 space-y-2">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs">
@@ -73,24 +73,25 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
             />
           </div>
         </div>
-        {/* AP dots */}
+        {/* Single action indicator */}
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs">
             <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-amber-300">AZIONI</span>
-            <span className="ml-auto text-amber-200 font-bold">{stats.ap}/{stats.maxAp}</span>
+            <span className="text-amber-300">AZIONE</span>
+            <span className="ml-auto text-amber-200 font-bold">
+              {stats.hasAction ? 'Pronta' : 'Usata'}
+            </span>
           </div>
-          <div className="flex gap-1.5">
-            {Array.from({ length: stats.maxAp }).map((_, i) => (
-              <div
-                key={i}
-                className={`flex-1 h-3.5 rounded-sm border transition-all ${
-                  i < stats.ap
-                    ? 'bg-amber-500 border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.5)]'
-                    : 'bg-black/60 border-stone-800'
-                }`}
-              />
-            ))}
+          <div
+            className={`h-3.5 border rounded-sm overflow-hidden transition-all ${
+              stats.hasAction
+                ? 'bg-amber-500 border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.6)]'
+                : 'bg-black/60 border-stone-800'
+            }`}
+          >
+            {stats.hasAction && (
+              <div className="h-full bg-gradient-to-r from-amber-400 to-amber-200" />
+            )}
           </div>
         </div>
         {/* Secondary stats */}
@@ -118,9 +119,9 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
             <span className="text-stone-200 font-bold tracking-wider">{stats.weaponName}</span>
           </div>
           <div className="flex justify-end gap-2 text-[10px] text-stone-500 mt-0.5">
-            <span className="text-amber-400 font-bold">{stats.weaponApCost} AP</span>
+            <span className="text-amber-400 font-bold">1 azione</span>
             <span>·</span>
-            <span>portata armi</span>
+            <span>portata {stats.weaponApCost === 1 ? 'veloce' : stats.weaponApCost === 2 ? 'media' : 'pesante'}</span>
           </div>
           <div className="mt-1 h-1.5 bg-black/80 border border-stone-900 rounded-sm overflow-hidden">
             <div
@@ -190,11 +191,11 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
                     new CustomEvent('umbral-consume', { detail: { uid: c.uid } }),
                   );
                 }}
-                disabled={!isPlayerTurn || stats.ap < 1 || stats.isAnimating}
+                disabled={!canAct}
                 className="group relative px-3 py-2 bg-black/70 border border-stone-700 hover:border-stone-500 rounded-sm transition-all hover:bg-black/90 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ borderTopColor: c.color, borderTopWidth: 2 }}
               >
-                <div className="text-[10px] text-stone-400">Q{idx + 1} · 1 AP</div>
+                <div className="text-[10px] text-stone-400">Q{idx + 1} · 1 azione</div>
                 <div className="text-xs font-bold" style={{ color: c.color }}>
                   {c.name}
                 </div>
@@ -212,16 +213,16 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
           className="pointer-events-auto px-6 py-2 bg-gradient-to-b from-stone-800 to-stone-950 border border-amber-900 hover:border-amber-600 text-amber-200 text-xs font-bold tracking-widest uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg"
         >
           <FastForward className="w-3 h-3" />
-          Fine Turno · Spazio
+          Passa Turno · Spazio
         </button>
       </div>
 
       {/* Bottom-left: Controls hint */}
       <div className="absolute bottom-4 left-4 text-[10px] text-stone-500 leading-tight">
-        <div><span className="text-stone-400 font-bold">WASD</span> muovi (1 AP)</div>
+        <div><span className="text-stone-400 font-bold">WASD</span> muovi (1 azione)</div>
         <div><span className="text-stone-400 font-bold">Mouse</span> mira</div>
-        <div><span className="text-stone-400 font-bold">Click</span> attacca ({stats.weaponApCost} AP)</div>
-        <div><span className="text-stone-400 font-bold">Spazio</span> attesa/fine turno</div>
+        <div><span className="text-stone-400 font-bold">Click</span> attacca (1 azione)</div>
+        <div><span className="text-stone-400 font-bold">Spazio</span> passa turno</div>
         <div><span className="text-stone-400 font-bold">Q1-3</span> usa curativo</div>
       </div>
 

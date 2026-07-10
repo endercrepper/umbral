@@ -90,7 +90,7 @@ export interface Perk {
 
 export const PERKS: Perk[] = [
   { id: 'brute', name: 'Forza Bruta', description: '+15% danno mischia', stat: 'might', bonus: 15, icon: 'sword' },
-  { id: 'swift', name: 'Piedi Veli', description: '+1 AP per turno', stat: 'agility', bonus: 1, icon: 'wind' },
+  { id: 'swift', name: 'Riflessi Felini', description: '+15% prob. critico', stat: 'agility', bonus: 15, icon: 'wind' },
   { id: 'steady', name: 'Polso Saldo', description: '+10% prob. critico', stat: 'agility', bonus: 10, icon: 'target' },
   { id: 'tough', name: 'Tempra', description: '+25 HP massimi', stat: 'vitality', bonus: 25, icon: 'heart' },
   { id: 'resilient', name: 'Resiliente', description: '+50 HP massimi', stat: 'vitality', bonus: 50, icon: 'shield' },

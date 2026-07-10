@@ -266,7 +266,7 @@ export const useGame = create<GameState>((set, get) => ({
       // Local import to avoid circular
       const ALL_PERKS = [
         { id: 'brute', name: 'Forza Bruta', stat: 'might', bonus: 15 },
-        { id: 'swift', name: 'Piedi Veli', stat: 'agility', bonus: 1 },
+        { id: 'swift', name: 'Riflessi Felini', stat: 'agility', bonus: 15 },
         { id: 'steady', name: 'Polso Saldo', stat: 'agility', bonus: 10 },
         { id: 'tough', name: 'Tempra', stat: 'vitality', bonus: 25 },
         { id: 'resilient', name: 'Resiliente', stat: 'vitality', bonus: 50 },
@@ -317,11 +317,12 @@ export function makeItemUID(): string {
 }
 
 // Derived stats helper
+// Stoneshard-style: 1 action per turn (always). Agility gives crit chance instead.
 export function getDerivedStats(stats: PlayerStats, level: number) {
   return {
     maxHp: 100 + stats.vitality,
-    maxAp: 4 + Math.floor(stats.agility / 1), // each +1 agility from swift perk = +1 AP
-    critChance: Math.min(60, stats.agility >= 10 ? (stats.agility - 10) * 2 : 0), // 10 agility from steady = first 10 don't count
+    maxAp: 1, // single action per turn — Stoneshard style
+    critChance: Math.min(60, stats.agility >= 10 ? (stats.agility - 10) * 2 : 0),
     mightBonus: stats.might, // % bonus to melee damage
     focusBonus: stats.focus, // % bonus to ranged damage + durability
   };

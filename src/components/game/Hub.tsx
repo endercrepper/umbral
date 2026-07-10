@@ -187,9 +187,9 @@ export default function Hub() {
                   </div>
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     <Stat label="Danno" value={equippedDef.damage} />
-                    <Stat label="AP/Attacco" value={equippedDef.apCost} />
+                    <Stat label="Tipo" value={equippedDef.apCost === 1 ? 'Veloce' : equippedDef.apCost === 2 ? 'Media' : 'Pesante'} />
                     <Stat label="Portata" value={equippedDef.range.toFixed(1)} />
-                    <Stat label="Vel" value={equippedDef.attackSpeed.toFixed(1) + '/s'} />
+                    <Stat label="Vel" value={equippedDef.attackSpeed.toFixed(1)} />
                   </div>
                   <div className="mt-2 text-[10px] text-stone-400 italic">
                     {equippedDef.description}
@@ -307,7 +307,7 @@ export default function Hub() {
               </div>
               <div className="mt-2 text-[10px] text-stone-500 leading-relaxed space-y-0.5">
                 <div>HP massimi: <span className="text-emerald-400">{derived.maxHp}</span></div>
-                <div>AP per turno: <span className="text-amber-400">{derived.maxAp}</span></div>
+                <div>Azione per turno: <span className="text-amber-400">1</span></div>
                 {derived.critChance > 0 && (
                   <div>Critico: <span className="text-yellow-400">{derived.critChance}%</span></div>
                 )}
@@ -459,7 +459,7 @@ function StashView({
                   </div>
                   <div className="flex gap-3 text-[10px] text-stone-400">
                     <span>DMG {def.damage}</span>
-                    <span>AP {def.apCost}</span>
+                    <span>{def.apCost === 1 ? 'VELOCE' : def.apCost === 2 ? 'MEDIA' : 'PESANTE'}</span>
                     <span>RNG {def.range.toFixed(1)}</span>
                   </div>
                 </div>

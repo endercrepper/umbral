@@ -121,9 +121,7 @@ export default function PerkModal() {
                 {/* Stat */}
                 <div className="text-[10px] text-stone-500 mb-2 uppercase tracking-widest">
                   {STAT_LABEL[perk.stat]} +{perk.bonus}
-                  {perk.stat === 'agility' && perk.id === 'swift' ? ' AP' : ''}
-                  {perk.stat === 'vitality' ? ' HP' : ''}
-                  {perk.stat === 'might' || perk.stat === 'focus' ? ' %' : ''}
+                  {perk.stat === 'vitality' ? ' HP' : ' %'}
                 </div>
                 {/* Description */}
                 <div className="text-xs text-stone-300 leading-relaxed">
