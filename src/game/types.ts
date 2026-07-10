@@ -21,6 +21,7 @@ export interface WeaponDef {
   rarity: Rarity;
   color: string; // hex visual color
   description: string;
+  apCost: number; // turn-based: action points to attack
 }
 
 export interface WeaponInstance {
@@ -55,6 +56,7 @@ export interface EnemyDef {
   xpReward: number;
   lootChance: number;
   description: string;
+  actionsPerTurn: number; // turn-based: how many actions per enemy turn
 }
 
 export type GamePhase = 'menu' | 'hub' | 'raid' | 'extracted' | 'dead';
@@ -66,7 +68,36 @@ export interface RunStats {
   roomsCleared: number;
   lootValue: number;
   timeAlive: number;
+  turnsPlayed: number;
 }
+
+// Stoneshard-style secondary stats
+export interface PlayerStats {
+  might: number;     // +% melee damage
+  agility: number;   // +AP, +crit chance
+  vitality: number;  // +max HP
+  focus: number;     // +range damage, +weapon durability
+}
+
+export interface Perk {
+  id: string;
+  name: string;
+  description: string;
+  stat: keyof PlayerStats;
+  bonus: number;
+  icon: string;
+}
+
+export const PERKS: Perk[] = [
+  { id: 'brute', name: 'Forza Bruta', description: '+15% danno mischia', stat: 'might', bonus: 15, icon: 'sword' },
+  { id: 'swift', name: 'Piedi Veli', description: '+1 AP per turno', stat: 'agility', bonus: 1, icon: 'wind' },
+  { id: 'steady', name: 'Polso Saldo', description: '+10% prob. critico', stat: 'agility', bonus: 10, icon: 'target' },
+  { id: 'tough', name: 'Tempra', description: '+25 HP massimi', stat: 'vitality', bonus: 25, icon: 'heart' },
+  { id: 'resilient', name: 'Resiliente', description: '+50 HP massimi', stat: 'vitality', bonus: 50, icon: 'shield' },
+  { id: 'sharp_eye', name: 'Occhio Acuto', description: '+20% danno a distanza', stat: 'focus', bonus: 20, icon: 'eye' },
+  { id: 'armorsmith', name: 'Armaiolo', description: '+25% durabilità armi', stat: 'focus', bonus: 25, icon: 'hammer' },
+  { id: 'berserker', name: 'Berserker', description: '+25% danno mischia', stat: 'might', bonus: 25, icon: 'flame' },
+];
 
 export interface DungeonCell {
   type: 'floor' | 'wall' | 'door' | 'loot' | 'extraction' | 'spawn';

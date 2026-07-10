@@ -78,6 +78,12 @@ export default function EndScreen() {
             color="text-stone-300"
           />
           <StatCard
+            icon={<Timer className="w-3.5 h-3.5" />}
+            label="Turni Giocati"
+            value={stats.turnsPlayed || 0}
+            color="text-amber-300"
+          />
+          <StatCard
             icon={<Skull className="w-3.5 h-3.5" />}
             label="Uccisioni"
             value={stats.kills}

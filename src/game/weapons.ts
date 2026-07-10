@@ -1,4 +1,5 @@
 // === UMBRAL: Weapon Database - 5 Tiers from Neolithic to Renaissance ===
+// Turn-based version: each weapon has apCost (1=fast, 2=normal, 3=heavy)
 import type { WeaponDef, WeaponTier, Rarity } from './types';
 
 export const TIER_ORDER: WeaponTier[] = ['neolithic', 'bronze', 'iron', 'medieval', 'renaissance'];
@@ -49,7 +50,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 1,
     rarity: 'common',
     color: '#7d6b54',
-    description: 'Una lama grezza di selce scheggiata. Leggera ma fragile.',
+    description: 'Una lama grezza di selce scheggiata. Leggera ma fragile. Veloce (1 AP).',
+    apCost: 1,
   },
   {
     id: 'stone_axe',
@@ -63,7 +65,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 3,
     rarity: 'common',
     color: '#8b7355',
-    description: 'Testa in pietra legata a un manico di legno. Lenta ma potente.',
+    description: 'Testa in pietra legata a un manico di legno. Lenta ma potente (3 AP).',
+    apCost: 3,
   },
   {
     id: 'bone_spear',
@@ -77,7 +80,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 2,
     rarity: 'uncommon',
     color: '#e8d8b7',
-    description: 'Punta d\'osso affilata su asta di legno. Portata superiore.',
+    description: 'Punta d\'osso su asta di legno. Portata superiore (2 AP).',
+    apCost: 2,
   },
 
   // === ETÀ DEL BRONZO ===
@@ -93,7 +97,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 2.5,
     rarity: 'uncommon',
     color: '#c98a3c',
-    description: 'Lama di bronzo forgiato. Equilibrio tra velocità e potenza.',
+    description: 'Lama di bronzo forgiato. Equilibrio (2 AP).',
+    apCost: 2,
   },
   {
     id: 'bronze_mace',
@@ -107,7 +112,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 4,
     rarity: 'uncommon',
     color: '#b87a30',
-    description: 'Testa di bronzo massiccio. Schiaccia armature e ossa.',
+    description: 'Testa di bronzo massiccio. Schiaccia (3 AP).',
+    apCost: 3,
   },
   {
     id: 'bronze_spear',
@@ -121,7 +127,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 3,
     rarity: 'rare',
     color: '#d99a4c',
-    description: 'Punta di bronzo su asta di frassino. Versione migliorata della lancia neolitica.',
+    description: 'Punta di bronzo su asta di frassino. Portata ampia (2 AP).',
+    apCost: 2,
   },
 
   // === ETÀ DEL FERRO ===
@@ -137,7 +144,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 3.5,
     rarity: 'rare',
     color: '#9aa4b2',
-    description: 'Lama di ferro temprato. L\'arma versatile del guerriero.',
+    description: 'Lama di ferro temprato. Arma versatile (2 AP).',
+    apCost: 2,
   },
   {
     id: 'war_hammer',
@@ -151,7 +159,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 6,
     rarity: 'rare',
     color: '#7a8290',
-    description: 'Testa di ferro pesante. Polverizza difese nemiche.',
+    description: 'Testa di ferro pesante. Polverizza (3 AP).',
+    apCost: 3,
   },
   {
     id: 'iron_halberd',
@@ -165,7 +174,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 5,
     rarity: 'epic',
     color: '#aab4c2',
-    description: 'Lama e punta su lunga asta. Letale a distanza.',
+    description: 'Lama e punta su lunga asta. Letale a distanza (3 AP).',
+    apCost: 3,
   },
 
   // === MEDIEVALE ===
@@ -181,7 +191,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 4,
     rarity: 'epic',
     color: '#cfd8e3',
-    description: 'Acciaio damasco forgia nobile. Sangue di molti uomini.',
+    description: 'Acciaio damasco forgia nobile (2 AP).',
+    apCost: 2,
   },
   {
     id: 'heavy_battleaxe',
@@ -195,7 +206,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 7,
     rarity: 'epic',
     color: '#b8c0cc',
-    description: 'Ascia bipenne da guerra. Colpi devastanti, lenti.',
+    description: 'Ascia bipenne da guerra. Colpi devastanti (3 AP).',
+    apCost: 3,
   },
   {
     id: 'crossbow',
@@ -209,7 +221,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 5,
     rarity: 'legendary',
     color: '#6b4423',
-    description: 'Balestra di acciaio. Colpisce a distanza con forza bruta.',
+    description: 'Balestra di acciaio. Colpisce a distanza (2 AP).',
+    apCost: 2,
   },
 
   // === RINASCIMENTALE ===
@@ -225,7 +238,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 2,
     rarity: 'legendary',
     color: '#e8c547',
-    description: 'Lama sottile forgiata da maestro italiano. Velocità folle.',
+    description: 'Lama sottile forgiata da maestro italiano. Veloce (1 AP).',
+    apCost: 1,
   },
   {
     id: 'zweihander',
@@ -239,7 +253,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 8,
     rarity: 'legendary',
     color: '#f0d050',
-    description: 'Spada a due mani gigantesca. Polverizza qualsiasi difesa.',
+    description: 'Spada a due mani gigantesca. Polverizza (3 AP).',
+    apCost: 3,
   },
   {
     id: 'flintlock_pistol',
@@ -253,7 +268,8 @@ export const WEAPONS: WeaponDef[] = [
     weight: 3,
     rarity: 'legendary',
     color: '#3a2a1a',
-    description: 'Arma da fuoco sperimentale. Rumorosa ma letale.',
+    description: 'Arma da fuoco sperimentale. Letale a distanza (2 AP).',
+    apCost: 2,
   },
 ];
 
@@ -276,7 +292,6 @@ export function randomWeaponByTier(tier: WeaponTier, rarity?: Rarity): WeaponDef
 }
 
 export function randomWeapon(rarityBias: number = 0): WeaponDef {
-  // Higher rarityBias → higher chance of high tier
   const tierRoll = Math.random() * 100 + rarityBias * 20;
   let tier: WeaponTier;
   if (tierRoll < 30) tier = 'neolithic';

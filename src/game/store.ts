@@ -1,4 +1,4 @@
-// === UMBRAL: Game State Store (Zustand) ===
+// === UMBRAL: Game State Store (Zustand) - Turn-based ===
 'use client';
 
 import { create } from 'zustand';
@@ -7,6 +7,8 @@ import type {
   WeaponInstance,
   RunStats,
   WeaponTier,
+  PlayerStats,
+  Perk,
 } from './types';
 import { WEAPON_MAP, randomWeapon } from './weapons';
 import { CONSUMABLES } from './enemies';
@@ -46,6 +48,12 @@ export interface GameState {
   difficulty: number;
   // Hub message/log
   log: string[];
+  // Player stats (Stoneshard-style)
+  baseStats: PlayerStats;
+  // Perks unlocked
+  perks: string[];
+  // Pending level-up (player must choose a perk)
+  pendingLevelUps: number;
 
   // Actions
   setPhase: (phase: GamePhase) => void;
@@ -65,12 +73,12 @@ export interface GameState {
   spendGold: (g: number) => boolean;
   buyStarterWeapon: (tier: WeaponTier) => boolean;
   logMessage: (msg: string) => void;
+  applyPerk: (perkId: string) => void;
   reset: () => void;
 }
 
 let _uidCounter = 0;
 function uid(): string {
-  // Deterministic counter for SSR consistency; randomized suffix on client only
   _uidCounter += 1;
   const randomPart = typeof window === 'undefined'
     ? '0'
@@ -99,6 +107,13 @@ const STARTER_WEAPON: InventoryItem = {
   maxDurability: 65,
 };
 
+const BASE_STATS: PlayerStats = {
+  might: 0,
+  agility: 0,
+  vitality: 0,
+  focus: 0,
+};
+
 export const useGame = create<GameState>((set, get) => ({
   phase: 'menu',
   stash: [STARTER_WEAPON],
@@ -117,16 +132,19 @@ export const useGame = create<GameState>((set, get) => ({
   lastRunStats: null,
   difficulty: 1,
   log: ['Benvenuto in UMBRAL. Le profondità attendono.'],
+  baseStats: { ...BASE_STATS },
+  perks: [],
+  pendingLevelUps: 0,
 
   setPhase: (phase) => set({ phase }),
 
   addToStash: (item) => set((s) => ({ stash: [...s.stash, item] })),
 
-  removeFromStash: (uid) =>
+  removeFromStash: (u) =>
     set((s) => ({
-      stash: s.stash.filter((i) => i.uid !== uid),
+      stash: s.stash.filter((i) => i.uid !== u),
       equippedWeaponUid:
-        s.equippedWeaponUid === uid ? null : s.equippedWeaponUid,
+        s.equippedWeaponUid === u ? null : s.equippedWeaponUid,
     })),
 
   equipWeapon: (uid) => set({ equippedWeaponUid: uid }),
@@ -149,11 +167,11 @@ export const useGame = create<GameState>((set, get) => ({
       };
     }),
 
-  useConsumable: (uid) =>
+  useConsumable: (u) =>
     set((s) => ({
       carriedConsumables: s.carriedConsumables
         .map((c) =>
-          c.uid === uid ? { ...c, qty: Math.max(0, (c.qty || 0) - 1) } : c,
+          c.uid === u ? { ...c, qty: Math.max(0, (c.qty || 0) - 1) } : c,
         )
         .filter((c) => (c.qty || 0) > 0),
     })),
@@ -176,9 +194,10 @@ export const useGame = create<GameState>((set, get) => ({
     set((s) => {
       const newStash = [...s.stash, ...s.raidLoot];
       const totalValue = stats.lootValue;
-      const xpGain = stats.kills * 8 + Math.floor(totalValue / 5);
+      const xpGain = stats.kills * 8 + Math.floor(totalValue / 5) + Math.floor(stats.turnsPlayed / 2);
       const newXp = s.xp + xpGain;
       const newLevel = Math.floor(newXp / 100) + 1;
+      const levelGained = newLevel - s.level;
       const goldGain = Math.floor(totalValue / 2);
       return {
         phase: 'extracted',
@@ -190,6 +209,7 @@ export const useGame = create<GameState>((set, get) => ({
         level: newLevel,
         gold: s.gold + goldGain,
         lastRunStats: stats,
+        pendingLevelUps: s.pendingLevelUps + levelGained,
         log: [
           ...s.log,
           `Estrazione riuscita! +${xpGain} XP, +${goldGain} oro.`,
@@ -241,6 +261,32 @@ export const useGame = create<GameState>((set, get) => ({
   logMessage: (msg) =>
     set((s) => ({ log: [...s.log, msg].slice(-30) })),
 
+  applyPerk: (perkId) =>
+    set((s) => {
+      // Local import to avoid circular
+      const ALL_PERKS = [
+        { id: 'brute', name: 'Forza Bruta', stat: 'might', bonus: 15 },
+        { id: 'swift', name: 'Piedi Veli', stat: 'agility', bonus: 1 },
+        { id: 'steady', name: 'Polso Saldo', stat: 'agility', bonus: 10 },
+        { id: 'tough', name: 'Tempra', stat: 'vitality', bonus: 25 },
+        { id: 'resilient', name: 'Resiliente', stat: 'vitality', bonus: 50 },
+        { id: 'sharp_eye', name: 'Occhio Acuto', stat: 'focus', bonus: 20 },
+        { id: 'armorsmith', name: 'Armaiolo', stat: 'focus', bonus: 25 },
+        { id: 'berserker', name: 'Berserker', stat: 'might', bonus: 25 },
+      ] as const;
+      const perk = ALL_PERKS.find((p) => p.id === perkId);
+      if (!perk) return s;
+      return {
+        baseStats: {
+          ...s.baseStats,
+          [perk.stat]: s.baseStats[perk.stat] + perk.bonus,
+        },
+        perks: [...s.perks, perkId],
+        pendingLevelUps: Math.max(0, s.pendingLevelUps - 1),
+        log: [...s.log, `Perk sbloccato: ${perk.name}.`].slice(-30),
+      };
+    }),
+
   reset: () =>
     set({
       phase: 'menu',
@@ -259,10 +305,24 @@ export const useGame = create<GameState>((set, get) => ({
       gold: 50,
       lastRunStats: null,
       difficulty: 1,
+      baseStats: { ...BASE_STATS },
+      perks: [],
+      pendingLevelUps: 0,
       log: ['Nuova partita iniziata.'],
     }),
 }));
 
 export function makeItemUID(): string {
   return uid();
+}
+
+// Derived stats helper
+export function getDerivedStats(stats: PlayerStats, level: number) {
+  return {
+    maxHp: 100 + stats.vitality,
+    maxAp: 4 + Math.floor(stats.agility / 1), // each +1 agility from swift perk = +1 AP
+    critChance: Math.min(60, stats.agility >= 10 ? (stats.agility - 10) * 2 : 0), // 10 agility from steady = first 10 don't count
+    mightBonus: stats.might, // % bonus to melee damage
+    focusBonus: stats.focus, // % bonus to ranged damage + durability
+  };
 }

@@ -7,9 +7,11 @@ import HUD, { type HudStats } from '@/components/game/HUD';
 import MainMenu from '@/components/game/MainMenu';
 import Hub from '@/components/game/Hub';
 import EndScreen from '@/components/game/EndScreen';
+import PerkModal from '@/components/game/PerkModal';
 
 export default function Home() {
   const phase = useGame((s) => s.phase);
+  const pendingLevelUps = useGame((s) => s.pendingLevelUps);
   const [hud, setHud] = useState<HudStats | null>(null);
 
   // Keyboard shortcuts for consumables during raid
@@ -43,6 +45,8 @@ export default function Home() {
       {phase === 'menu' && <MainMenu />}
       {phase === 'hub' && <Hub />}
       {(phase === 'extracted' || phase === 'dead') && <EndScreen />}
+      {/* Perk selection modal — shown whenever pending level-ups exist AND not in raid */}
+      {phase === 'hub' && pendingLevelUps > 0 && <PerkModal />}
     </main>
   );
 }

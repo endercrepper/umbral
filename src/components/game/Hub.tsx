@@ -1,10 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { useGame } from '@/game/store';
+import { useGame, getDerivedStats } from '@/game/store';
 import { WEAPON_MAP, TIER_LABEL, TIER_COLOR, RARITY_LABEL, RARITY_COLOR } from '@/game/weapons';
 import { CONSUMABLES } from '@/game/enemies';
-import { Swords, Backpack, Coins, Skull, LogOut, ShoppingBag, Heart, Plus } from 'lucide-react';
+import { PERKS } from '@/game/types';
+import { Swords, Backpack, Coins, Skull, LogOut, ShoppingBag, Heart, Plus, Sparkles, Zap, Shield, Eye } from 'lucide-react';
+
+const STAT_ICON: Record<string, React.ReactNode> = {
+  might: <Swords className="w-3.5 h-3.5 text-orange-400" />,
+  agility: <Zap className="w-3.5 h-3.5 text-amber-400" />,
+  vitality: <Shield className="w-3.5 h-3.5 text-emerald-400" />,
+  focus: <Eye className="w-3.5 h-3.5 text-sky-400" />,
+};
+
+const STAT_LABEL: Record<string, string> = {
+  might: 'Vigor',
+  agility: 'Agilità',
+  vitality: 'Vitalità',
+  focus: 'Focus',
+};
 
 export default function Hub() {
   const stash = useGame((s) => s.stash);
@@ -22,6 +37,12 @@ export default function Hub() {
   const addConsumable = useGame((s) => s.addConsumable);
   const spendGold = useGame((s) => s.spendGold);
   const log = useGame((s) => s.log);
+  const baseStats = useGame((s) => s.baseStats);
+  const perks = useGame((s) => s.perks);
+  const pendingLevelUps = useGame((s) => s.pendingLevelUps);
+
+  const derived = getDerivedStats(baseStats, level);
+  const ownedPerks = perks.map((id) => PERKS.find((p) => p.id === id)).filter(Boolean);
 
   const [tab, setTab] = useState<'stash' | 'shop' | 'log'>('stash');
 
@@ -166,9 +187,9 @@ export default function Hub() {
                   </div>
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     <Stat label="Danno" value={equippedDef.damage} />
-                    <Stat label="Vel" value={equippedDef.attackSpeed.toFixed(1) + '/s'} />
+                    <Stat label="AP/Attacco" value={equippedDef.apCost} />
                     <Stat label="Portata" value={equippedDef.range.toFixed(1)} />
-                    <Stat label="Vigore" value={equippedDef.staminaCost} />
+                    <Stat label="Vel" value={equippedDef.attackSpeed.toFixed(1) + '/s'} />
                   </div>
                   <div className="mt-2 text-[10px] text-stone-400 italic">
                     {equippedDef.description}
@@ -258,6 +279,56 @@ export default function Hub() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Player stats (perks) */}
+            <div>
+              <h3 className="text-amber-200 text-sm tracking-widest uppercase mb-2 flex items-center gap-2">
+                <Sparkles className="w-4 h-4" /> Attributi
+              </h3>
+              {pendingLevelUps > 0 && (
+                <div className="mb-2 px-2 py-2 border border-amber-600 bg-amber-950/40 rounded text-xs text-amber-300 animate-pulse">
+                  ✦ {pendingLevelUps} perk da sbloccare! Chiudi questo pannello per scegliere.
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-1 text-xs">
+                {(['might', 'agility', 'vitality', 'focus'] as const).map((stat) => (
+                  <div
+                    key={stat}
+                    className="flex items-center gap-1.5 px-2 py-1.5 bg-black/50 border border-stone-900 rounded"
+                  >
+                    {STAT_ICON[stat]}
+                    <span className="text-stone-400">{STAT_LABEL[stat]}</span>
+                    <span className="ml-auto text-stone-200 font-bold">
+                      {baseStats[stat]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-[10px] text-stone-500 leading-relaxed space-y-0.5">
+                <div>HP massimi: <span className="text-emerald-400">{derived.maxHp}</span></div>
+                <div>AP per turno: <span className="text-amber-400">{derived.maxAp}</span></div>
+                {derived.critChance > 0 && (
+                  <div>Critico: <span className="text-yellow-400">{derived.critChance}%</span></div>
+                )}
+                {derived.mightBonus > 0 && (
+                  <div>Bonus mischia: <span className="text-orange-400">+{derived.mightBonus}%</span></div>
+                )}
+              </div>
+              {/* Owned perks */}
+              {ownedPerks.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {ownedPerks.map((p) => p && (
+                    <span
+                      key={p.id}
+                      className="text-[10px] px-1.5 py-0.5 bg-stone-900/70 border border-stone-700 rounded text-stone-300"
+                      title={p.description}
+                    >
+                      {p.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Launch raid */}
@@ -388,7 +459,7 @@ function StashView({
                   </div>
                   <div className="flex gap-3 text-[10px] text-stone-400">
                     <span>DMG {def.damage}</span>
-                    <span>SPD {def.attackSpeed.toFixed(1)}</span>
+                    <span>AP {def.apCost}</span>
                     <span>RNG {def.range.toFixed(1)}</span>
                   </div>
                 </div>

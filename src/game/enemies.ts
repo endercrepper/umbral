@@ -16,6 +16,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     xpReward: 5,
     lootChance: 0.35,
     description: 'Una creatura deforme, un tempo umana. Debole ma numerosa.',
+    actionsPerTurn: 1,
   },
   cultist: {
     kind: 'cultist',
@@ -31,6 +32,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     xpReward: 12,
     lootChance: 0.5,
     description: 'Servo di divinità dimenticate. Lancia maledizioni a distanza.',
+    actionsPerTurn: 1,
   },
   knight: {
     kind: 'knight',
@@ -46,6 +48,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     xpReward: 30,
     lootChance: 0.75,
     description: 'Un tempo paladino, ora corrotto. Armatura pesante, lento ma letale.',
+    actionsPerTurn: 1,
   },
   beast: {
     kind: 'beast',
@@ -61,6 +64,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     xpReward: 22,
     lootChance: 0.55,
     description: 'Predatore delle profondità. Veloce, feroce, implacabile.',
+    actionsPerTurn: 2,
   },
   boss: {
     kind: 'boss',
@@ -76,6 +80,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     xpReward: 100,
     lootChance: 1.0,
     description: 'Antico male che dimora nelle viscere. La sua morte echeggia per secoli.',
+    actionsPerTurn: 2,
   },
 };
 
