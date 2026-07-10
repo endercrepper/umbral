@@ -52,3 +52,13 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Database binaries
+db/*.db
+db/*.db-journal
+
+# Process files
+.zscripts/*.pid
+
+# OS files
+Thumbs.db
