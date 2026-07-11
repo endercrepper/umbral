@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { useGame, makeItemUID, getDerivedStats } from '@/game/store';
-import { generateDungeon, type DungeonData } from '@/game/dungeon';
+import { generateMap, MAP_TYPE_LABEL, MAP_TYPE_COLOR, type DungeonData, type MapType } from '@/game/dungeon';
 import { WEAPON_MAP, randomWeapon } from '@/game/weapons';
 import { ENEMIES, CONSUMABLES } from '@/game/enemies';
 import type { RunStats, Vec3, WeaponDef } from '@/game/types';
@@ -130,6 +130,10 @@ class UmbralEngine {
 
   // Dungeon
   private dungeon!: DungeonData;
+  private currentGridX = 0;
+  private currentGridY = 0;
+  private mapGroup!: THREE.Group;
+  private hasLeftVillage = false;
 
   // Player
   private player!: THREE.Group;
@@ -324,18 +328,71 @@ class UmbralEngine {
   }
 
   private initDungeon() {
-    const seed = Math.floor(Math.random() * 1000000);
+    this.currentGridX = 0;
+    this.currentGridY = 0;
+    this.hasLeftVillage = false;
+    this.loadMap(0, 0, null);
+  }
+
+  private loadMap(gridX: number, gridY: number, fromEdge: 'north' | 'south' | 'east' | 'west' | null) {
     const diff = useGame.getState().difficulty;
-    this.dungeon = generateDungeon(seed, diff);
+    this.dungeon = generateMap(gridX, gridY, diff);
+    this.currentGridX = gridX;
+    this.currentGridY = gridY;
+
+    if (fromEdge === null) {
+      this.playerTileX = this.dungeon.spawn.x;
+      this.playerTileY = this.dungeon.spawn.y;
+    } else {
+      const cx = Math.floor(this.dungeon.width / 2);
+      const cy = Math.floor(this.dungeon.height / 2);
+      switch (fromEdge) {
+        case 'north':
+          this.playerTileX = cx;
+          this.playerTileY = this.dungeon.height - 2;
+          break;
+        case 'south':
+          this.playerTileX = cx;
+          this.playerTileY = 1;
+          break;
+        case 'east':
+          this.playerTileX = this.dungeon.width - 2;
+          this.playerTileY = cy;
+          break;
+        case 'west':
+          this.playerTileX = 1;
+          this.playerTileY = cy;
+          break;
+      }
+      if (this.dungeon.cells[this.playerTileY][this.playerTileX] === 'wall') {
+        this.dungeon.cells[this.playerTileY][this.playerTileX] = 'floor';
+      }
+    }
+    this.playerTargetX = this.playerTileX * TILE;
+    this.playerTargetZ = this.playerTileY * TILE;
+
+    this.buildMapVisuals();
+
+    if (this.dungeon.type !== 'village') {
+      this.hasLeftVillage = true;
+    }
+
+    if (fromEdge !== null) {
+      const mapName = MAP_TYPE_LABEL[this.dungeon.type];
+      const color = MAP_TYPE_COLOR[this.dungeon.type];
+      this.logAction(`Entrato in: ${mapName}`, color);
+    }
+  }
+
+  private buildMapVisuals() {
+    this.clearMapVisuals();
+
+    this.mapGroup = new THREE.Group();
+    this.scene.add(this.mapGroup);
 
     const tileGeom = new THREE.PlaneGeometry(TILE, TILE);
     tileGeom.rotateX(-Math.PI / 2);
     const wallGeom = new THREE.BoxGeometry(TILE, TILE * 1.6, TILE);
-
-    const floorGroup = new THREE.Group();
-    const wallGroup = new THREE.Group();
-    this.scene.add(floorGroup);
-    this.scene.add(wallGroup);
 
     for (let y = 0; y < this.dungeon.height; y++) {
       for (let x = 0; x < this.dungeon.width; x++) {
@@ -344,7 +401,7 @@ class UmbralEngine {
         const floor = new THREE.Mesh(tileGeom, this.matFloor);
         floor.position.set(x * TILE, 0, y * TILE);
         floor.receiveShadow = true;
-        floorGroup.add(floor);
+        this.mapGroup.add(floor);
 
         for (const [dx, dy] of [
           [0, 1],
@@ -360,58 +417,78 @@ class UmbralEngine {
             wmesh.position.set(nx * TILE, TILE * 0.8, ny * TILE);
             wmesh.castShadow = true;
             wmesh.receiveShadow = true;
-            wallGroup.add(wmesh);
+            this.mapGroup.add(wmesh);
             this.walls.push(wmesh);
           }
         }
       }
     }
 
-    // Loot
     for (const spot of this.dungeon.lootSpots) {
       this.spawnLoot(spot.x, spot.y);
     }
 
-    // Extraction portal
     const ext = this.dungeon.extraction;
-    const extGeom = new THREE.CircleGeometry(TILE * 0.7, 24);
-    extGeom.rotateX(-Math.PI / 2);
-    const extMat = new THREE.MeshStandardMaterial({
-      color: 0x00ff88,
-      emissive: 0x00ff88,
-      emissiveIntensity: 1.8,
-      transparent: true,
-      opacity: 0.7,
-    });
-    this.extractionMesh = new THREE.Mesh(extGeom, extMat);
-    this.extractionMesh.position.set(ext.x * TILE, 0.05, ext.y * TILE);
-    this.scene.add(this.extractionMesh);
+    if (ext.x >= 0 && ext.y >= 0) {
+      const extGeom = new THREE.CircleGeometry(TILE * 0.7, 24);
+      extGeom.rotateX(-Math.PI / 2);
+      const extMat = new THREE.MeshStandardMaterial({
+        color: 0x00ff88,
+        emissive: 0x00ff88,
+        emissiveIntensity: 1.8,
+        transparent: true,
+        opacity: 0.7,
+      });
+      this.extractionMesh = new THREE.Mesh(extGeom, extMat);
+      this.extractionMesh.position.set(ext.x * TILE, 0.05, ext.y * TILE);
+      this.mapGroup.add(this.extractionMesh);
 
-    this.extractionLight = new THREE.PointLight(0x00ff88, 7, 18);
-    this.extractionLight.position.set(ext.x * TILE, 1.8, ext.y * TILE);
-    this.scene.add(this.extractionLight);
+      this.extractionLight = new THREE.PointLight(0x00ff88, 7, 18);
+      this.extractionLight.position.set(ext.x * TILE, 1.8, ext.y * TILE);
+      this.mapGroup.add(this.extractionLight);
+    } else {
+      this.extractionMesh = null as any;
+      this.extractionLight = null as any;
+    }
 
-    // Spawn enemies
     for (const es of this.dungeon.enemySpawns) {
       this.spawnEnemy(es.x, es.y, es.kind);
     }
 
-    // Player spawn
-    this.playerTileX = this.dungeon.spawn.x;
-    this.playerTileY = this.dungeon.spawn.y;
-    this.playerTargetX = this.playerTileX * TILE;
-    this.playerTargetZ = this.playerTileY * TILE;
-
-    // Place wall torches throughout the dungeon for visibility
     this.placeTorches();
   }
 
+  private clearMapVisuals() {
+    if (this.mapGroup) {
+      this.scene.remove(this.mapGroup);
+      this.mapGroup.traverse((o: any) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          if (Array.isArray(o.material)) o.material.forEach((m: any) => m.dispose());
+          else o.material.dispose();
+        }
+      });
+    }
+    this.mapGroup = new THREE.Group();
+    this.scene.add(this.mapGroup);
+
+    this.walls = [];
+    this.enemies = [];
+    this.lootItems = [];
+    this.torches = [];
+    this.occupiedTiles.clear();
+    this.extractionTurnsAccumulated = 0;
+  }
+
+  private transitionToMap(newGridX: number, newGridY: number, fromEdge: 'north' | 'south' | 'east' | 'west') {
+    this.loadMap(newGridX, newGridY, fromEdge);
+    this.player.position.set(this.playerTargetX, 0, this.playerTargetZ);
+    this.turnIndicator.position.set(this.playerTargetX, 0.06, this.playerTargetZ);
+  }
+
   private placeTorches() {
-    // Strategy: for each room, place 1-2 torches on adjacent wall tiles.
-    // Also scatter some along long corridors.
     const placed = new Set<string>();
     const tryPlace = (floorX: number, floorY: number) => {
-      // Find a wall tile adjacent to this floor tile
       const candidates: { x: number; y: number; dir: number }[] = [];
       const dirs = [
         { dx: 1, dy: 0, ang: -Math.PI / 2 },
@@ -436,25 +513,51 @@ class UmbralEngine {
       return true;
     };
 
-    // Torches in rooms (corners and center-adjacent)
+    if (this.dungeon.type === 'village') {
+      // Village: torches along perimeter walls every 4 tiles
+      for (let x = 2; x < this.dungeon.width - 2; x += 4) {
+        tryPlace(x, 1);
+        tryPlace(x, this.dungeon.height - 2);
+      }
+      for (let y = 2; y < this.dungeon.height - 2; y += 4) {
+        tryPlace(1, y);
+        tryPlace(this.dungeon.width - 2, y);
+      }
+      const cx = Math.floor(this.dungeon.width / 2);
+      const cy = Math.floor(this.dungeon.height / 2);
+      tryPlace(cx - 2, cy);
+      tryPlace(cx + 2, cy);
+      return;
+    }
+
+    if (this.dungeon.type === 'boss') {
+      // Boss arena: torches around perimeter every 3 tiles
+      for (let x = 2; x < this.dungeon.width - 2; x += 3) {
+        tryPlace(x, 1);
+        tryPlace(x, this.dungeon.height - 2);
+      }
+      for (let y = 2; y < this.dungeon.height - 2; y += 3) {
+        tryPlace(1, y);
+        tryPlace(this.dungeon.width - 2, y);
+      }
+      return;
+    }
+
+    // Dungeon/wilderness: room-based torches
     for (const room of this.dungeon.rooms) {
-      // 2 torches per room: top-left and bottom-right corners (inset)
       tryPlace(room.x + 1, room.y + 1);
       tryPlace(room.x + room.w - 2, room.y + room.h - 2);
-      // Big rooms get extra
       if (room.w >= 7 || room.h >= 7) {
         tryPlace(room.x + 1, room.y + room.h - 2);
         tryPlace(room.x + room.w - 2, room.y + 1);
       }
     }
 
-    // Torches along corridors: scan all floor tiles, place every ~6 tiles
-    // on tiles that have a wall neighbor (so torch can attach)
+    // Corridor torches
     let corridorCount = 0;
     for (let y = 0; y < this.dungeon.height; y++) {
       for (let x = 0; x < this.dungeon.width; x++) {
         if (this.dungeon.cells[y][x] !== 'floor') continue;
-        // Skip tiles inside rooms
         let inRoom = false;
         for (const room of this.dungeon.rooms) {
           if (x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h) {
@@ -562,12 +665,12 @@ class UmbralEngine {
     halo.renderOrder = 998;
     group.add(halo);
 
-    this.scene.add(group);
+    this.mapGroup.add(group);
 
     // Warm point light at flame position
     const light = new THREE.PointLight(0xffaa55, 8, 22, 1.3);
     light.position.set(flameX, 2.0, flameZ);
-    this.scene.add(light);
+    this.mapGroup.add(light);
 
     this.torches.push({
       light,
@@ -755,7 +858,7 @@ class UmbralEngine {
     group.add(bodyMesh);
 
     group.position.set(tileX * TILE, 0, tileY * TILE);
-    this.scene.add(group);
+    this.mapGroup.add(group);
 
     const hpBar = this.makeHpBarSprite();
     hpBar.position.set(0, 2.2 * def.scale, 0);
@@ -904,7 +1007,7 @@ class UmbralEngine {
     group.add(halo);
 
     group.position.set(tileX * TILE, 0.5, tileY * TILE);
-    this.scene.add(group);
+    this.mapGroup.add(group);
 
     this.lootItems.push({
       mesh: group,
@@ -1130,15 +1233,51 @@ class UmbralEngine {
   private tryMove(dx: number, dy: number) {
     const tx = this.playerTileX + dx;
     const ty = this.playerTileY + dy;
-    if (tx < 0 || ty < 0 || tx >= this.dungeon.width || ty >= this.dungeon.height) return;
+
+    // Edge transition: walking off the map edge loads the adjacent map
+    if (tx < 0) {
+      this.playerFacing = Math.atan2(dx, dy);
+      this.player.rotation.y = this.playerFacing;
+      this.playerHasAction = false;
+      this.logAction(`Uscita verso Ovest...`, '#88aaff');
+      this.transitionToMap(this.currentGridX - 1, this.currentGridY, 'west');
+      this.afterPlayerAction();
+      return;
+    }
+    if (tx >= this.dungeon.width) {
+      this.playerFacing = Math.atan2(dx, dy);
+      this.player.rotation.y = this.playerFacing;
+      this.playerHasAction = false;
+      this.logAction(`Uscita verso Est...`, '#88aaff');
+      this.transitionToMap(this.currentGridX + 1, this.currentGridY, 'east');
+      this.afterPlayerAction();
+      return;
+    }
+    if (ty < 0) {
+      this.playerFacing = Math.atan2(dx, dy);
+      this.player.rotation.y = this.playerFacing;
+      this.playerHasAction = false;
+      this.logAction(`Uscita verso Nord...`, '#88aaff');
+      this.transitionToMap(this.currentGridX, this.currentGridY - 1, 'north');
+      this.afterPlayerAction();
+      return;
+    }
+    if (ty >= this.dungeon.height) {
+      this.playerFacing = Math.atan2(dx, dy);
+      this.player.rotation.y = this.playerFacing;
+      this.playerHasAction = false;
+      this.logAction(`Uscita verso Sud...`, '#88aaff');
+      this.transitionToMap(this.currentGridX, this.currentGridY + 1, 'south');
+      this.afterPlayerAction();
+      return;
+    }
+
     if (this.dungeon.cells[ty][tx] === 'wall') {
-      // Blocked, no cost, just face direction
       this.playerFacing = Math.atan2(dx, dy);
       this.player.rotation.y = this.playerFacing;
       return;
     }
     if (this.occupiedTiles.has(`${tx},${ty}`)) {
-      // Enemy on tile — face them instead
       this.playerFacing = Math.atan2(dx, dy);
       this.player.rotation.y = this.playerFacing;
       return;
@@ -1155,9 +1294,7 @@ class UmbralEngine {
     this.animMode = 'move';
     this.isAnimating = true;
     this.playerHasAction = false;
-    // Check loot pickup at new tile
     this.checkLootPickup(tx, ty);
-    // Check extraction
     this.checkExtractionTile();
     this.afterPlayerAction();
   }
@@ -1329,10 +1466,19 @@ class UmbralEngine {
   }
 
   private checkExtractionTile() {
-    const onExtraction = this.playerTileX === this.dungeon.extraction.x && this.playerTileY === this.dungeon.extraction.y;
+    // Extraction only works in village AND player must have left village at least once
+    if (this.dungeon.type !== 'village' || !this.hasLeftVillage) {
+      if (this.extractionTurnsAccumulated > 0) {
+        this.extractionTurnsAccumulated = 0;
+      }
+      return;
+    }
+    const ext = this.dungeon.extraction;
+    if (ext.x < 0) return;
+    const onExtraction = this.playerTileX === ext.x && this.playerTileY === ext.y;
     if (onExtraction) {
       this.extractionTurnsAccumulated += 1;
-      this.logAction(`Sul portale: ${this.extractionTurnsAccumulated}/${EXTRACTION_TURNS_REQUIRED} turni`, '#33ff88');
+      this.logAction(`Al villaggio: ${this.extractionTurnsAccumulated}/${EXTRACTION_TURNS_REQUIRED} turni`, '#33ff88');
       if (this.extractionTurnsAccumulated >= EXTRACTION_TURNS_REQUIRED) {
         this.handleExtract();
       }
@@ -1697,6 +1843,12 @@ class UmbralEngine {
       hasAction: this.playerHasAction,
       currentTurn: this.currentTurn,
       turnCount: this.turnCount,
+      mapType: this.dungeon?.type || 'village',
+      mapName: this.dungeon ? MAP_TYPE_LABEL[this.dungeon.type] : '',
+      mapColor: this.dungeon ? MAP_TYPE_COLOR[this.dungeon.type] : '#4ade80',
+      gridX: this.currentGridX,
+      gridY: this.currentGridY,
+      hasLeftVillage: this.hasLeftVillage,
       weaponName: this.weaponDef.name,
       weaponApCost: this.weaponDef.apCost,
       weaponDurability: this.weaponDurability,

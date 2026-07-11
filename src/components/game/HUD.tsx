@@ -8,6 +8,12 @@ export interface HudStats {
   hasAction: boolean;
   currentTurn: 'player' | 'enemy';
   turnCount: number;
+  mapType: string;
+  mapName: string;
+  mapColor: string;
+  gridX: number;
+  gridY: number;
+  hasLeftVillage: boolean;
   weaponName: string;
   weaponApCost: number;
   weaponDurability: number;
@@ -37,7 +43,7 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-20 select-none font-mono text-stone-200">
       {/* Turn banner (top center) */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-3">
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
         <div
           className={`px-4 py-1.5 border-2 rounded-sm shadow-lg flex items-center gap-2 ${
             isPlayerTurn
@@ -55,6 +61,20 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
           </span>
           <span className="text-[10px] opacity-60">· T{stats.turnCount}</span>
           <span className="text-[10px] opacity-60">· {timeStr}</span>
+        </div>
+        {/* Map indicator */}
+        <div
+          className="px-3 py-0.5 border rounded-sm shadow-lg flex items-center gap-2 bg-black/70"
+          style={{ borderColor: stats.mapColor }}
+        >
+          <div
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: stats.mapColor }}
+          />
+          <span className="text-[10px] tracking-widest font-bold uppercase" style={{ color: stats.mapColor }}>
+            {stats.mapName}
+          </span>
+          <span className="text-[9px] text-stone-500">({stats.gridX},{stats.gridY})</span>
         </div>
       </div>
 
@@ -224,13 +244,14 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
         <div><span className="text-stone-400 font-bold">Click</span> attacca (1 azione)</div>
         <div><span className="text-stone-400 font-bold">Spazio</span> passa turno</div>
         <div><span className="text-stone-400 font-bold">Q1-3</span> usa curativo</div>
+        <div className="text-stone-600 mt-1"><span className="text-amber-500">↑</span> Esci dai bordi per cambiare mappa</div>
       </div>
 
       {/* Extraction progress */}
       {stats.nearExtraction && (
         <div className="absolute top-1/2 left-4 -translate-y-1/2 text-center w-56">
           <div className="text-emerald-300 text-xs font-bold tracking-widest mb-2 animate-pulse">
-            ESTRAZIONE
+            ESTRAZIONE AL VILLAGGIO
           </div>
           <div className="flex gap-1.5 justify-center mb-1">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -245,7 +266,7 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
             ))}
           </div>
           <div className="text-emerald-500 text-[10px]">
-            Resta sul portale 3 turni
+            Resta al villaggio 3 turni
           </div>
         </div>
       )}
