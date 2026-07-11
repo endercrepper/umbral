@@ -247,7 +247,7 @@ export default function HUD({ stats }: { stats: HudStats | null }) {
         <div className="text-stone-600 mt-1"><span className="text-amber-500">↑</span> Esci dai bordi per cambiare mappa</div>
       </div>
 
-      {/* Extraction progress */}
+      {/* Extraction progress (village only, after leaving) */}
       {stats.nearExtraction && (
         <div className="absolute top-1/2 left-4 -translate-y-1/2 text-center w-56">
           <div className="text-emerald-300 text-xs font-bold tracking-widest mb-2 animate-pulse">
